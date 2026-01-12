@@ -1,0 +1,3156 @@
+{
+  "updatedAt": "2026-01-12T07:45:26.452Z",
+  "createdAt": "2026-01-10T18:22:25.849Z",
+  "id": "pvdUlL8oUiLlSvkD",
+  "name": "Snovio Contact Finder (Zoho Accounts)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "sticky-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "content": "## Snovio Contact Finder\n\n**Endpoints:**\n- GET /snovio-search?accountId=XXX\n- POST /snovio-save\n\n**Flow:**\n1. Get Account \u00e2\u2020\u2019 Extract domain\n2. Snovio Domain Search (1 credit)\n3. Auto-update Account fields\n4. Display prospect popup\n5. User selects contacts\n6. Email lookup (1 credit each)\n7. Create Zoho Contacts\n\n**Branding:** Perdigon dark theme",
+        "height": 400,
+        "width": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "webhook-search",
+      "name": "Webhook: Search",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ],
+      "webhookId": "snovio-search",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "snovio-search",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "webhook-save",
+      "name": "Webhook: Save",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        400,
+        600
+      ],
+      "webhookId": "snovio-save",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "snovio-save",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "config-search",
+      "name": "Config (Search)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\n\nconst CONFIG = {\n  SNOVIO_USER_ID: 'd37f94b18ce02ece5f401ce8683b258e',\n  SNOVIO_SECRET: '45b473e4d2f48e928c9bafd7fcbcd853',\n  ACCOUNT_ID: query.accountId || null,\n  LOGO_URL: 'https://raw.githubusercontent.com/mallen012/Perdigon-Directory/main/Blue%20Logo%20Only.png'\n};\n\nif (!CONFIG.ACCOUNT_ID) {\n  return [{ json: { error: 'Missing accountId parameter', CONFIG } }];\n}\n\nreturn [{ json: CONFIG }];"
+      }
+    },
+    {
+      "id": "config-save",
+      "name": "Config (Save)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        600
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\n\nconst CONFIG = {\n  SNOVIO_USER_ID: 'd37f94b18ce02ece5f401ce8683b258e',\n  SNOVIO_SECRET: '45b473e4d2f48e928c9bafd7fcbcd853',\n  ACCOUNT_ID: body.accountId || null,\n  ACCOUNT_NAME: body.accountName || '',\n  DOMAIN: body.domain || '',\n  COMPANY_PHONE: body.companyPhone || '',\n  COMPANY_WEBSITE: body.companyWebsite || '',\n  SELECTED_PROSPECTS: body.prospects || [],\n  SNOVIO_LIST_ID: body.snovioListId || null,\n  NEW_LIST_NAME: body.newListName || null,\n  LOGO_URL: 'https://raw.githubusercontent.com/mallen012/Perdigon-Directory/main/Blue%20Logo%20Only.png'\n};\n\nif (!CONFIG.ACCOUNT_ID || CONFIG.SELECTED_PROSPECTS.length === 0) {\n  return [{ json: { error: 'Missing accountId or no prospects selected', CONFIG } }];\n}\n\nreturn [{ json: CONFIG }];"
+      }
+    },
+    {
+      "id": "check-account-id",
+      "name": "Has Account ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ACCOUNT_ID }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-zoho-account",
+      "name": "Get Zoho Account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        240
+      ],
+      "parameters": {
+        "url": "=https://www.zohoapis.com/crm/v2/Accounts/{{ $json.ACCOUNT_ID }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zohoOAuth2Api",
+        "options": {}
+      },
+      "credentials": {
+        "zohoOAuth2Api": {
+          "id": "jcm850uJVwpPyj2c",
+          "name": "Zoho ALL account"
+        }
+      }
+    },
+    {
+      "id": "parse-account",
+      "name": "Parse Account",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst config = $('Config (Search)').first().json;\n\nconst account = response.data?.[0];\nif (!account) {\n  return [{ json: { error: 'Account not found', accountId: config.ACCOUNT_ID } }];\n}\n\n// Extract domain from website\nlet domain = null;\nif (account.Website) {\n  try {\n    let url = account.Website;\n    if (!url.startsWith('http')) url = 'https://' + url;\n    domain = new URL(url).hostname.replace('www.', '');\n  } catch (e) {\n    // Try simple extraction\n    domain = account.Website.replace(/^(https?:\\/\\/)?(www\\.)?/, '').split('/')[0];\n  }\n}\n\nreturn [{ json: {\n  ...config,\n  accountId: account.id,\n  accountName: account.Account_Name || '',\n  website: account.Website || null,\n  domain: domain,\n  currentPhone: account.Phone || null,\n  currentIndustry: account.Industry || null,\n  currentEmployees: account.No_of_Employees || null,\n  currentStreet: account.Billing_Street || null,\n  currentCity: account.Billing_City || null,\n  currentState: account.Billing_State || null,\n  currentZip: account.Billing_Code || null,\n  currentCountry: account.Billing_Country || null,\n  currentEmailDomain: account.Email_Domain || null\n}}];"
+      }
+    },
+    {
+      "id": "check-domain",
+      "name": "Has Domain?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.domain }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "snovio-token",
+      "name": "Snovio: Get Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1720,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.snov.io/v1/oauth/access_token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ grant_type: 'client_credentials', client_id: $json.SNOVIO_USER_ID, client_secret: $json.SNOVIO_SECRET }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "snovio-domain-search",
+      "name": "Snovio: Start Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        180
+      ],
+      "parameters": {
+        "url": "https://api.snov.io/v2/domain-search/prospects/start",
+        "method": "POST",
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ domain: $('Parse Account').first().json.domain }) }}",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Snovio: Get Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "parse-snovio-results",
+      "name": "Parse Snovio Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const snovio = $input.first().json;\nconst accountData = $('Parse Account').first().json;\n\n// Get credits balance from Snovio: Get Balance node\nconst creditsData = $('Snovio: Get Balance').first().json;\nconst creditsBalance = parseInt(creditsData.data?.balance || '0');\nconst creditsUsed = creditsData.data?.unique_recipients_used || 0;\n\n// Get Snovio lists from the Get Lists node\nconst listsData = $('Snovio: Get Lists').first().json;\nconst snovioLists = (listsData.list || []).map(list => ({\n  id: list.id,\n  name: list.name\n}));\n\n// v2 API response: data[] is the array of prospects, meta.total_count is the total\nconst rawProspects = snovio.data || [];\nconst totalCount = snovio.meta?.total_count || rawProspects.length;\n\nconst prospects = rawProspects.map((p, idx) => {\n  // Check if Snovio already has cached email for this prospect\n  const cachedEmail = p.emails?.emails?.[0]?.email || null;\n  const cachedStatus = p.emails?.emails?.[0]?.smtp_status || null;\n\n  // Extract prospect hash from search_emails_start URL (if present)\n  const emailUrl = p.search_emails_start || '';\n  const hashMatch = emailUrl.match(/start\\/([a-f0-9]+)$/);\n  const prospectHash = hashMatch ? hashMatch[1] : null;\n\n  // Determine email and status\n  let email = null;\n  let status = 'unknown';\n\n  if (cachedEmail) {\n    // Snovio already has the email cached - use it directly\n    email = cachedEmail;\n    status = cachedStatus || 'valid';\n  } else if (p.email) {\n    // Direct email field (legacy format)\n    email = p.email;\n    status = 'valid';\n  }\n\n  return {\n    id: prospectHash || `prospect-${idx}`,\n    firstName: p.first_name || '',\n    lastName: p.last_name || '',\n    fullName: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown',\n    position: p.position || '',\n    email: email,\n    sourcePage: p.source_page || null,\n    status: status,\n    prospectHash: prospectHash,\n    emailLookupUrl: p.search_emails_start || null,\n    hasCachedEmail: !!cachedEmail\n  };\n});\n\n// Company info from Snovio meta\nconst meta = snovio.meta || {};\nconst companyInfo = {\n  companyName: meta.company_name || null,\n  website: accountData.domain,\n  logoUrl: meta.logo || null,\n  phone: meta.hq_phone || null,\n  industry: meta.industry || null,\n  city: meta.city || null,\n  state: meta.state || null,\n  country: meta.country || null,\n  street: meta.street || null,\n  postalCode: meta.postal_code || null,\n  employeeCount: meta.employee_count || null\n};\n\n// Build update fields for Account (only if currently empty in Zoho)\nconst accountUpdates = {};\n\n// Phone\nif (!accountData.currentPhone && meta.hq_phone) {\n  accountUpdates.Phone = meta.hq_phone;\n}\n\n// Industry\nif (!accountData.currentIndustry && meta.industry) {\n  accountUpdates.Industry = meta.industry;\n}\n\n// Billing Address fields\nif (!accountData.currentStreet && meta.street) {\n  accountUpdates.Billing_Street = meta.street;\n}\nif (!accountData.currentCity && meta.city) {\n  accountUpdates.Billing_City = meta.city;\n}\nif (!accountData.currentState && meta.state) {\n  accountUpdates.Billing_State = meta.state;\n}\nif (!accountData.currentZip && meta.postal_code) {\n  accountUpdates.Billing_Code = meta.postal_code;\n}\nif (!accountData.currentCountry && meta.country) {\n  accountUpdates.Billing_Country = meta.country;\n}\n\n// Employee count\nif (!accountData.currentEmployees && meta.employee_count) {\n  accountUpdates.Employees = meta.employee_count;\n}\n\n// Email Domain - add domain to account if not already set\nif (!accountData.currentEmailDomain && accountData.domain) {\n  accountUpdates.Email_Domain = accountData.domain;\n}\n\nreturn [{ json: {\n  ...accountData,\n  companyInfo,\n  prospects,\n  prospectCount: prospects.length,\n  totalCount: totalCount,\n  hasMorePages: !!snovio.links?.next,\n  accountUpdates,\n  hasUpdates: Object.keys(accountUpdates).length > 0,\n  apiSuccess: snovio.status === 'completed' || rawProspects.length > 0,\n  creditsBalance: creditsBalance,\n  creditsUsed: creditsUsed,\n  snovioLists: snovioLists\n}}];"
+      }
+    },
+    {
+      "id": "check-updates",
+      "name": "Has Account Updates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2820,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasUpdates }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "update-zoho-account",
+      "name": "Update Zoho Account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        120
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://www.zohoapis.com/crm/v2/Accounts/{{ $json.accountId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zohoOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: [$json.accountUpdates] }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "zohoOAuth2Api": {
+          "id": "jcm850uJVwpPyj2c",
+          "name": "Zoho ALL account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "merge-to-popup",
+      "name": "Merge to Popup",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3260,
+        180
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "build-popup-html",
+      "name": "Build Popup HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3480,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Parse Snovio Results').first().json;\nconst prospects = data.prospects || [];\nconst accountName = data.accountName || 'Account';\nconst domain = data.domain || '';\nconst logoUrl = data.LOGO_URL;\nconst totalInDb = data.totalCount || 0;\nconst creditsBalance = data.creditsBalance || 0;\nconst companyPhone = data.companyInfo?.phone || data.currentPhone || '';\nconst companyWebsite = data.companyInfo?.website || domain;\n\n// Snovio lists for dropdown\nconst snovioLists = data.snovioLists || [];\n\nlet rows = '';\nif (prospects.length === 0) {\n  rows = '<tr><td colspan=\"5\" style=\"text-align:center;padding:40px;color:#94a3b8;\">' +\n    (totalInDb > 0 ? '<div style=\"font-size:48px;margin-bottom:16px;\">&#128202;</div><div style=\"font-size:18px;margin-bottom:8px;\">' + totalInDb + ' emails in Snovio database</div><div style=\"font-size:13px;\">Prospect data is being processed. Try again in a moment.</div>' : 'No contacts found for this domain') +\n    '</td></tr>';\n} else {\n  prospects.forEach((p, i) => {\n    const hasEmail = p.email && p.email.length > 0;\n    const rowBg = hasEmail ? 'rgba(100,200,120,0.15)' : 'rgba(255,180,80,0.15)';\n    const statusIcon = hasEmail ? '&#10004;' : '?';\n    const statusColor = hasEmail ? '#4ade80' : '#fbbf24';\n    const linkedInLink = p.sourcePage\n      ? '<a href=\"' + p.sourcePage + '\" target=\"_blank\" style=\"color:#60a5fa;text-decoration:none;\">LinkedIn &#8599;</a>'\n      : '<span style=\"color:#64748b;\">&mdash;</span>';\n\n    rows += '<tr style=\"background:' + rowBg + ';\">' +\n      '<td style=\"padding:12px;text-align:center;\">' +\n        '<input type=\"checkbox\" name=\"prospect\" value=\"' + p.id + '\" ' +\n          'data-firstname=\"' + (p.firstName || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-lastname=\"' + (p.lastName || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-position=\"' + (p.position || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-email=\"' + (p.email || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-linkedin=\"' + (p.sourcePage || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-status=\"' + p.status + '\" ' +\n          'data-hash=\"' + (p.prospectHash || '') + '\" ' +\n          'data-emaillookupurl=\"' + (p.emailLookupUrl || '').replace(/\"/g, '&quot;') + '\" ' +\n          'style=\"width:18px;height:18px;cursor:pointer;\">' +\n      '</td>' +\n      '<td style=\"padding:12px;\">' +\n        '<div style=\"font-weight:500;\">' + p.fullName + '</div>' +\n        (p.email ? '<div style=\"font-size:12px;color:#94a3b8;\">' + p.email + '</div>' : '<div style=\"font-size:12px;color:#fbbf24;\">Email lookup required</div>') +\n      '</td>' +\n      '<td style=\"padding:12px;\">' + linkedInLink + '</td>' +\n      '<td style=\"padding:12px;color:#cbd5e1;\">' + (p.position || '&mdash;') + '</td>' +\n      '<td style=\"padding:12px;text-align:center;\"><span style=\"color:' + statusColor + ';font-weight:bold;\">' + statusIcon + '</span></td>' +\n      '</tr>';\n  });\n}\n\n// Build Snovio list dropdown options\nlet listOptions = '<option value=\"\">-- Don\\'t add to Snovio list --</option><option value=\"__new__\">+ Create new list</option>';\nsnovioLists.forEach(list => {\n  listOptions += '<option value=\"' + list.id + '\">' + (list.name || '').replace(/\"/g, '&quot;') + '</option>';\n});\n\n// Website link - clickable\nconst websiteLink = companyWebsite\n  ? '<a href=\"https://' + companyWebsite.replace(/^https?:\\/\\//, '') + '\" target=\"_blank\" style=\"color:#60a5fa;text-decoration:none;\">' + domain + ' &#8599;</a>'\n  : domain;\n\nconst html = '<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Snovio Contact Finder</title><style>*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#1a1a2e;color:#fff;margin:0;padding:20px;min-height:100vh}.container{max-width:900px;margin:0 auto}.header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.1)}.logo{height:40px}.header-content{flex:1}.title{font-size:24px;font-weight:600}.subtitle{color:#94a3b8;font-size:14px;margin-top:4px}.header-badges{display:flex;gap:10px;align-items:center}.credits-badge{background:linear-gradient(135deg,#10b981,#059669);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600}.db-count{background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600}.card{background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:16px;overflow:hidden}.table-container{overflow-x:auto;max-height:500px;overflow-y:auto}table{width:100%;border-collapse:collapse}th{background:rgba(0,0,0,0.3);padding:14px 12px;text-align:left;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;position:sticky;top:0;z-index:10}th:first-child{text-align:center;width:50px}th:last-child{text-align:center;width:60px}tr{border-bottom:1px solid rgba(255,255,255,0.05)}tr:hover{background:rgba(255,255,255,0.05)!important}.footer{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:rgba(0,0,0,0.2);flex-wrap:wrap;gap:12px}.count{color:#94a3b8;font-size:14px}.btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s}.btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,0.4)}.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}.legend{display:flex;gap:20px;margin-top:16px;font-size:13px;color:#94a3b8}.legend-item{display:flex;align-items:center;gap:6px}.legend-dot{width:12px;height:12px;border-radius:3px}.legend-verified{background:rgba(100,200,120,0.4)}.legend-unverified{background:rgba(255,180,80,0.4)}.list-section{display:flex;align-items:center;gap:12px;width:100%;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1)}.list-label{color:#94a3b8;font-size:13px;white-space:nowrap}.list-select{background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;max-width:300px}.list-select:focus{outline:none;border-color:#6366f1}.new-list-input{background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 12px;border-radius:6px;font-size:13px;display:none;flex:1;max-width:200px}.new-list-input:focus{outline:none;border-color:#6366f1}</style></head><body><div class=\"container\"><div class=\"header\"><img src=\"' + logoUrl + '\" alt=\"Perdigon\" class=\"logo\"><div class=\"header-content\"><div class=\"title\">Snovio Contact Finder</div><div class=\"subtitle\">' + accountName + ' &#8226; ' + websiteLink + '</div></div><div class=\"header-badges\"><div class=\"credits-badge\">&#128179; ' + creditsBalance.toLocaleString() + ' credits</div>' + (totalInDb > 0 ? '<div class=\"db-count\">&#128202; ' + totalInDb + ' in database</div>' : '') + '</div></div><form id=\"contactForm\"><input type=\"hidden\" name=\"accountId\" value=\"' + data.accountId + '\"><input type=\"hidden\" name=\"accountName\" value=\"' + accountName + '\"><input type=\"hidden\" name=\"domain\" value=\"' + domain + '\"><input type=\"hidden\" name=\"companyPhone\" value=\"' + companyPhone + '\"><input type=\"hidden\" name=\"companyWebsite\" value=\"' + companyWebsite + '\"><div class=\"card\"><div class=\"table-container\"><table><thead><tr><th>Select</th><th>Contact</th><th>Profile</th><th>Position</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class=\"footer\"><div class=\"count\"><span id=\"selectedCount\">0</span> of ' + prospects.length + ' selected</div><div class=\"list-section\"><span class=\"list-label\">Add to Snovio list:</span><select name=\"snovioList\" class=\"list-select\" id=\"listSelect\">' + listOptions + '</select><input type=\"text\" name=\"newListName\" class=\"new-list-input\" id=\"newListInput\" placeholder=\"Enter new list name\"></div><button type=\"submit\" class=\"btn\" id=\"importBtn\"' + (prospects.length === 0 ? ' disabled' : '') + '>Import Selected</button></div></div></form><div class=\"legend\"><div class=\"legend-item\"><div class=\"legend-dot legend-verified\"></div><span>Has Email</span></div><div class=\"legend-item\"><div class=\"legend-dot legend-unverified\"></div><span>Needs Email Lookup (1 credit)</span></div></div></div><script>const form=document.getElementById(\"contactForm\");const checkboxes=document.querySelectorAll(\"input[name=prospect]\");const countEl=document.getElementById(\"selectedCount\");const importBtn=document.getElementById(\"importBtn\");const listSelect=document.getElementById(\"listSelect\");const newListInput=document.getElementById(\"newListInput\");function updateCount(){const selected=document.querySelectorAll(\"input[name=prospect]:checked\").length;countEl.textContent=selected;importBtn.disabled=selected===0}checkboxes.forEach(cb=>cb.addEventListener(\"change\",updateCount));listSelect.addEventListener(\"change\",function(){newListInput.style.display=this.value===\"__new__\"?\"block\":\"none\";if(this.value===\"__new__\")newListInput.focus()});form.addEventListener(\"submit\",async(e)=>{e.preventDefault();importBtn.disabled=true;importBtn.textContent=\"Importing...\";const selected=[];document.querySelectorAll(\"input[name=prospect]:checked\").forEach(cb=>{selected.push({id:cb.value,firstName:cb.dataset.firstname,lastName:cb.dataset.lastname,position:cb.dataset.position,email:cb.dataset.email||null,linkedin:cb.dataset.linkedin,status:cb.dataset.status,prospectHash:cb.dataset.hash,emailLookupUrl:cb.dataset.emaillookupurl})});const snovioListId=listSelect.value===\"__new__\"?null:listSelect.value;const newListName=listSelect.value===\"__new__\"?newListInput.value.trim():null;try{const response=await fetch(\"https://n8n.srv1127126.hstgr.cloud/webhook/snovio-save\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({accountId:form.querySelector(\"[name=accountId]\").value,accountName:form.querySelector(\"[name=accountName]\").value,domain:form.querySelector(\"[name=domain]\").value,companyPhone:form.querySelector(\"[name=companyPhone]\").value,companyWebsite:form.querySelector(\"[name=companyWebsite]\").value,prospects:selected,snovioListId:snovioListId||null,newListName:newListName||null})});const html=await response.text();document.body.innerHTML=html}catch(err){alert(\"Error: \"+err.message);importBtn.disabled=false;importBtn.textContent=\"Import Selected\"}})</script></body></html>';\n\nreturn [{ json: { html, prospectCount: prospects.length } }];"
+      }
+    },
+    {
+      "id": "respond-popup",
+      "name": "Respond: Popup",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3700,
+        180
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-no-domain",
+      "name": "Respond: No Domain",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1720,
+        360
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><title>No Website</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00f0\u0178\u0152\u0090</div><h1>No Website Found</h1><p>This Account doesn't have a Website field populated.</p><p style=\"color:#94a3b8;margin-top:20px;\">Add a website URL to the Account, then try again.</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-error",
+      "name": "Respond: Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        840,
+        440
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><title>Error</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00e2\u0161\u00a0\u00ef\u00b8\u008f</div><h1>Missing Account ID</h1><p>No accountId parameter was provided.</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "check-save-data",
+      "name": "Has Save Data?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ACCOUNT_ID }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "leftValue": "={{ $json.SELECTED_PROSPECTS.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "snovio-token-save",
+      "name": "Snovio: Get Token (Save)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        540
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.snov.io/v1/oauth/access_token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ grant_type: 'client_credentials', client_id: $('Config (Save)').first().json.SNOVIO_USER_ID, client_secret: $('Config (Save)').first().json.SNOVIO_SECRET }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "prepare-prospects",
+      "name": "Prepare Prospects",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        540
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config (Save)').first().json;\nconst listData = $('Store List ID').first().json;\nconst token = listData.accessToken;\nconst snovioListId = listData.snovioListId;\n\nreturn config.SELECTED_PROSPECTS.map(p => ({\n  json: {\n    ...p,\n    accountId: config.ACCOUNT_ID,\n    accountName: config.ACCOUNT_NAME,\n    domain: config.DOMAIN,\n    companyPhone: config.COMPANY_PHONE,\n    companyWebsite: config.COMPANY_WEBSITE,\n    accessToken: token,\n    snovioListId: snovioListId\n  }\n}));"
+      }
+    },
+    {
+      "id": "loop-prospects",
+      "name": "Loop Prospects",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1500,
+        540
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "snovio-email-finder",
+      "name": "Snovio: Start Email Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        540
+      ],
+      "parameters": {
+        "jsCode": "// Get prospect data from Loop Prospects\nconst prospect = $input.first().json;\nconst { firstName, lastName, domain, emailLookupUrl, accessToken, email } = prospect;\n\n// FIRST: Check if we already have a valid email (from Snovio cached data)\nif (email && email !== null && email.includes('@')) {\n  // Email already exists - pass it through without any API call\n  return [{ \n    json: { \n      ...prospect,\n      lookupMethod: 'cached',\n      email: email,\n      status: 'valid'\n    } \n  }];\n}\n\n// Check if we have a valid emailLookupUrl\nif (emailLookupUrl && emailLookupUrl.startsWith('http')) {\n  // Use the existing emailLookupUrl (from domain search)\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: emailLookupUrl,\n      headers: {\n        'Authorization': `Bearer ${accessToken}`,\n        'Content-Type': 'application/json'\n      }\n    });\n    return [{ json: { ...response, lookupMethod: 'emailLookupUrl' } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailLookupUrl' } }];\n  }\n} else {\n  // Use Snovio Email Finder API (add-names-to-find-emails)\n  // Must manually encode as form-urlencoded string\n  try {\n    const formBody = `access_token=${encodeURIComponent(accessToken)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&domain=${encodeURIComponent(domain)}`;\n    \n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.snov.io/v1/add-names-to-find-emails',\n      headers: {\n        'Content-Type': 'application/x-www-form-urlencoded'\n      },\n      body: formBody\n    });\n    \n    // Parse the response if it's a string\n    let parsed = response;\n    if (typeof response === 'string') {\n      try {\n        parsed = JSON.parse(response);\n      } catch (e) {\n        // Keep as string if not valid JSON\n      }\n    }\n    \n    // Return with metadata for next step\n    return [{ \n      json: { \n        ...parsed,\n        lookupMethod: 'emailFinder',\n        firstName,\n        lastName,\n        domain,\n        accessToken\n      } \n    }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailFinder' } }];\n  }\n}"
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "parse-email-result",
+      "name": "Parse Email Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2270,
+        540
+      ],
+      "parameters": {
+        "jsCode": "// Get the email result from previous node\nconst emailResult = $('Snovio: Get Email Result').first().json;\nconst prospect = $('Loop Prospects').first().json;\nconst accessToken = prospect.accessToken;\n\n// Helper to encode form data\nfunction encodeForm(obj) {\n  return Object.keys(obj)\n    .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]))\n    .join('&');\n}\n\nlet email = null;\nlet emailStatus = 'not_found';\nlet confidence = 0;\n\n// Handle errors from previous steps\nif (emailResult.error) {\n  return [{\n    json: {\n      ...prospect,\n      email: null,\n      emailStatus: 'error',\n      emailError: emailResult.error,\n      confidence: 0\n    }\n  }];\n}\n\n// Handle different response formats based on lookup method\nif (emailResult.lookupMethod === 'cached') {\n  // Email was already cached from Snovio - extract from emails array or direct field\n  if (emailResult.emails && emailResult.emails.length > 0) {\n    const emailData = emailResult.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.emailStatus || 'valid';\n    confidence = 100; // Cached emails are verified\n  } else if (emailResult.email) {\n    email = emailResult.email;\n    emailStatus = 'valid';\n    confidence = 100;\n  }\n  \n} else if (emailResult.lookupMethod === 'emailLookupUrl') {\n  // Format from emailLookupUrl method\n  const data = emailResult.data || emailResult;\n  \n  if (data.emails && data.emails.length > 0) {\n    const emailData = data.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.status || 'found';\n    confidence = emailData.probability || 0;\n  } else if (data.status === 'in_progress') {\n    emailStatus = 'in_progress';\n  }\n  \n} else if (emailResult.lookupMethod === 'emailFinder') {\n  // Format from Email Finder API (get-emails-from-names)\n  const data = emailResult.data || emailResult;\n  \n  // Check various places for email\n  if (data.emails && data.emails.length > 0) {\n    const emailData = data.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.status || 'found';\n    confidence = emailData.probability || 0;\n  } else if (data.email) {\n    // Direct email field\n    email = data.email;\n    emailStatus = data.emailStatus || 'found';\n    confidence = data.accuracy || 0;\n  } else if (emailResult.email) {\n    // Email at top level of result\n    email = emailResult.email;\n    emailStatus = 'found';\n    confidence = emailResult.accuracy || 0;\n  }\n  \n  // If no email found and still in_progress, poll one more time\n  if (!email && (data.status === 'in_progress' || emailResult.sent === true)) {\n    try {\n      // Wait 2 seconds and retry\n      await new Promise(resolve => setTimeout(resolve, 2000));\n      \n      const { firstName, lastName, domain } = emailResult;\n      const formBody = encodeForm({\n        access_token: accessToken,\n        first_name: firstName,\n        last_name: lastName,\n        domain: domain\n      });\n      \n      const retryResponse = await this.helpers.httpRequest({\n        method: 'POST',\n        url: 'https://api.snov.io/v1/get-emails-from-names',\n        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n        body: formBody\n      });\n      \n      const retryData = retryResponse.data || retryResponse;\n      if (retryData.emails && retryData.emails.length > 0) {\n        const emailData = retryData.emails[0];\n        email = emailData.email;\n        emailStatus = emailData.status || 'found';\n        confidence = emailData.probability || 0;\n      } else if (retryResponse.email) {\n        email = retryResponse.email;\n        emailStatus = 'found';\n        confidence = retryResponse.accuracy || 0;\n      }\n    } catch (e) {\n      // Ignore retry errors\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...prospect,\n    email,\n    emailStatus,\n    confidence,\n    lookupMethod: emailResult.lookupMethod\n  }\n}];"
+      }
+    },
+    {
+      "id": "create-zoho-contact",
+      "name": "Create Zoho Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2490,
+        540
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.zohoapis.com/crm/v2/Contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zohoOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: [{ First_Name: $json.firstName || '', Last_Name: $json.lastName || 'Unknown', Email: $json.email || null, Title: $json.position || null, Phone: $json.companyPhone || null, LinkedIn_Contact_Profile_URL: $json.linkedin || null, Website: $json.companyWebsite || null, Account_Name: { id: $json.accountId }, Lead_Source: 'Snov.io', Lead_Source_Perdigon: 'Snovio', Enriched_Source: 'Snovio', Snov_io_ID: $json.id || $json.prospectHash || null }], trigger: ['workflow'] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "zohoOAuth2Api": {
+          "id": "jcm850uJVwpPyj2c",
+          "name": "Zoho ALL account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "contact-created-check",
+      "name": "Contact Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2380,
+        540
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.data?.[0]?.code }}",
+              "rightValue": "SUCCESS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "add-unverified-tag",
+      "name": "Add Unverified Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2750,
+        660
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.zohoapis.com/crm/v2/Contacts/{{ $json.data[0].details.id }}/actions/add_tags?tag_names=Email%20Unverified",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zohoOAuth2Api",
+        "options": {}
+      },
+      "credentials": {
+        "zohoOAuth2Api": {
+          "id": "jcm850uJVwpPyj2c",
+          "name": "Zoho ALL account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "log-contact-result",
+      "name": "Log Contact Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2820,
+        540
+      ],
+      "parameters": {
+        "jsCode": "const createResult = $('Create Zoho Contact').first().json;\nconst prospectData = $('Parse Email Result').first().json;\n\nconst success = createResult.data?.[0]?.code === 'SUCCESS';\nconst contactId = createResult.data?.[0]?.details?.id || null;\n\nreturn [{ json: {\n  success,\n  contactId,\n  name: `${prospectData.firstName} ${prospectData.lastName}`,\n  email: prospectData.email,\n  isVerified: prospectData.isVerified,\n  error: success ? null : (createResult.data?.[0]?.message || 'Unknown error')\n}}];"
+      }
+    },
+    {
+      "id": "collect-results",
+      "name": "Collect Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        540
+      ],
+      "parameters": {
+        "jsCode": "const allResults = $input.all().map(i => i.json);\nconst config = $('Config (Save)').first().json;\n\nconst successful = allResults.filter(r => r.success);\nconst failed = allResults.filter(r => !r.success);\n\nreturn [{ json: {\n  accountName: config.ACCOUNT_NAME,\n  totalSelected: config.SELECTED_PROSPECTS.length,\n  totalCreated: successful.length,\n  totalFailed: failed.length,\n  created: successful,\n  failed: failed,\n  logoUrl: config.LOGO_URL\n}}];"
+      }
+    },
+    {
+      "id": "respond-save-success",
+      "name": "Respond: Save Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3260,
+        540
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><title>Import Complete</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;padding:40px;text-align:center;max-width:500px}.icon{font-size:72px;margin-bottom:16px}h1{color:#4ade80;margin:0 0 8px}.stat{font-size:48px;font-weight:700;background:linear-gradient(135deg,#4ade80,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.label{color:#64748b;font-size:14px;text-transform:uppercase}.subtitle{color:#94a3b8;margin-top:8px}.countdown{color:#64748b;font-size:13px;margin-top:24px}.manual-close{display:none;margin-top:16px}.manual-close a{color:#60a5fa;text-decoration:none;font-size:14px}.manual-close a:hover{text-decoration:underline}</style></head><body><div class=\"card\"><div class=\"icon\">&#10004;</div><h1>Import Complete</h1><div class=\"subtitle\">{{ $json.accountName }}</div><div style=\"margin:24px 0\"><div class=\"stat\">{{ $json.totalCreated }}</div><div class=\"label\">Contacts Created</div></div>{{ $json.totalFailed > 0 ? '<div style=\"color:#fbbf24;font-size:14px;\">' + $json.totalFailed + ' skipped (already exist in Zoho)</div>' : '' }}<div class=\"countdown\">Closing in <span id=\"t\">5</span>s...</div><div class=\"manual-close\" id=\"manualClose\"><a href=\"#\" onclick=\"tryClose();return false;\">Click here to close</a> or close this tab manually</div></div><script>(function(){var c=5;var countdownEl=document.getElementById('t');var manualEl=document.getElementById('manualClose');var timer=setInterval(function(){c--;countdownEl.textContent=c;if(c<=0){clearInterval(timer);tryClose();}},1000);function tryClose(){try{window.close();}catch(e){}setTimeout(function(){try{self.close();}catch(e){}},100);setTimeout(function(){try{open(location,'_self').close();}catch(e){}},200);setTimeout(function(){countdownEl.parentElement.innerHTML='You can close this window now';manualEl.style.display='block';},500);}window.tryClose=tryClose;})();</script></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-save-error",
+      "name": "Respond: Save Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1060,
+        720
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><title>Error</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00e2\u0161\u00a0\u00ef\u00b8\u008f</div><h1>Import Error</h1><p>{{ $('Config (Save)').first().json.error || 'Missing data or no prospects selected' }}</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "wait-for-results",
+      "name": "Wait 3s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        180
+      ],
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "snovio-get-results",
+      "name": "Snovio: Get Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2380,
+        180
+      ],
+      "parameters": {
+        "url": "={{ $('Snovio: Start Search').first().json.links.result }}",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Snovio: Get Token').first().json.access_token }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wait-email-lookup",
+      "name": "Wait Email Lookup",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1830,
+        540
+      ],
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "snovio-get-email",
+      "name": "Snovio: Get Email Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2050,
+        540
+      ],
+      "parameters": {
+        "jsCode": "// Get the lookup result from previous node\nconst lookupResult = $('Snovio: Start Email Lookup').first().json;\nconst prospect = $('Loop Prospects').first().json;\nconst accessToken = prospect.accessToken;\n\n// Check which lookup method was used\nif (lookupResult.lookupMethod === 'cached') {\n  // Email was already cached - just pass through the data\n  return [{ json: { \n    ...lookupResult,\n    emails: [{ email: lookupResult.email, emailStatus: 'valid' }]\n  } }];\n  \n} else if (lookupResult.lookupMethod === 'emailLookupUrl') {\n  // Use the result URL from the original lookup\n  const resultUrl = lookupResult.links?.result;\n  if (!resultUrl) {\n    return [{ json: { ...lookupResult, error: 'No result URL available' } }];\n  }\n  \n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url: resultUrl,\n      headers: {\n        'Authorization': `Bearer ${accessToken}`\n      }\n    });\n    return [{ json: { ...response, lookupMethod: 'emailLookupUrl' } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailLookupUrl' } }];\n  }\n  \n} else if (lookupResult.lookupMethod === 'emailFinder') {\n  // Use Snovio get-emails-from-names API\n  const { firstName, lastName, domain } = lookupResult;\n  \n  // Must manually encode as form-urlencoded string\n  try {\n    const formBody = `access_token=${encodeURIComponent(accessToken)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&domain=${encodeURIComponent(domain)}`;\n    \n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.snov.io/v1/get-emails-from-names',\n      headers: {\n        'Content-Type': 'application/x-www-form-urlencoded'\n      },\n      body: formBody\n    });\n    \n    // Parse the response if it's a string\n    let parsed = response;\n    if (typeof response === 'string') {\n      try {\n        parsed = JSON.parse(response);\n      } catch (e) {\n        // Keep as string if not valid JSON\n      }\n    }\n    \n    return [{ json: { ...parsed, lookupMethod: 'emailFinder', firstName, lastName, domain } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailFinder' } }];\n  }\n  \n} else {\n  // Unknown lookup method, pass through\n  return [{ json: { ...lookupResult, error: 'Unknown lookup method' } }];\n}"
+      }
+    },
+    {
+      "id": "is-verified-check",
+      "name": "Is Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2550,
+        540
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "verified-condition",
+              "leftValue": "={{ $json.isVerified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "add-verified-tag",
+      "name": "Add Verified Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2750,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.zohoapis.com/crm/v2/Contacts/{{ $json.contactId }}/actions/add_tags?tag_names=Email%20Verified",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zohoOAuth2Api",
+        "options": {}
+      }
+    },
+    {
+      "id": "snovio-get-balance",
+      "name": "Snovio: Get Balance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1830,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.snov.io/v1/get-balance",
+        "authentication": "none",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "snovio-get-lists",
+      "name": "Snovio: Get Lists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1830,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.snov.io/v1/get-user-lists",
+        "authentication": "none",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Snovio: Get Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "check-need-create-list",
+      "name": "Need to Create List?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1170,
+        540
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $('Config (Save)').first().json.NEW_LIST_NAME }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "create-snovio-list",
+      "name": "Create Snovio List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1390,
+        480
+      ],
+      "parameters": {
+        "url": "https://api.snov.io/v1/lists",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Snovio: Get Token (Save)').first().json.access_token }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('Config (Save)').first().json.NEW_LIST_NAME }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "store-list-id",
+      "name": "Store List ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1610,
+        540
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config (Save)').first().json;\n\n// Get the list ID - either from the newly created list or the selected existing one\nlet listId = config.SNOVIO_LIST_ID;\n\n// If we created a new list, get its ID\ntry {\n  const createResult = $('Create Snovio List').first();\n  if (createResult && createResult.json && createResult.json.id) {\n    listId = createResult.json.id;\n  }\n} catch (e) {\n  // List wasn't created, use the existing one\n}\n\nreturn [{ json: {\n  snovioListId: listId,\n  accessToken: $('Snovio: Get Token (Save)').first().json.access_token\n}}];"
+      }
+    },
+    {
+      "id": "check-has-list",
+      "name": "Has Snovio List?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2930,
+        540
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $('Prepare Prospects').first().json.snovioListId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "add-to-snovio-list",
+      "name": "Add to Snovio List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3150,
+        480
+      ],
+      "parameters": {
+        "url": "https://api.snov.io/v1/add-prospect-to-list",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Prepare Prospects').first().json.accessToken }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $('Parse Email Result').first().json.email }}"
+            },
+            {
+              "name": "listId",
+              "value": "={{ $('Prepare Prospects').first().json.snovioListId }}"
+            },
+            {
+              "name": "firstName",
+              "value": "={{ $('Parse Email Result').first().json.firstName }}"
+            },
+            {
+              "name": "lastName",
+              "value": "={{ $('Parse Email Result').first().json.lastName }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merge-balance-lists",
+      "name": "Merge Balance & Lists",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1830,
+        240
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Search": {
+      "main": [
+        [
+          {
+            "node": "Config (Search)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Save": {
+      "main": [
+        [
+          {
+            "node": "Config (Save)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Search)": {
+      "main": [
+        [
+          {
+            "node": "Has Account ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Save)": {
+      "main": [
+        [
+          {
+            "node": "Has Save Data?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Account ID?": {
+      "main": [
+        [
+          {
+            "node": "Get Zoho Account",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Zoho Account": {
+      "main": [
+        [
+          {
+            "node": "Parse Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Account": {
+      "main": [
+        [
+          {
+            "node": "Has Domain?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Domain?": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Get Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: No Domain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Snovio Results": {
+      "main": [
+        [
+          {
+            "node": "Has Account Updates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Account Updates?": {
+      "main": [
+        [
+          {
+            "node": "Update Zoho Account",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge to Popup",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Update Zoho Account": {
+      "main": [
+        [
+          {
+            "node": "Merge to Popup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge to Popup": {
+      "main": [
+        [
+          {
+            "node": "Build Popup HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Popup HTML": {
+      "main": [
+        [
+          {
+            "node": "Respond: Popup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Save Data?": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Get Token (Save)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Save Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prospects": {
+      "main": [
+        [
+          {
+            "node": "Loop Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Prospects": {
+      "main": [
+        [
+          {
+            "node": "Collect Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Snovio: Start Email Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email Result": {
+      "main": [
+        [
+          {
+            "node": "Create Zoho Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Zoho Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact Created?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Created?": {
+      "main": [
+        [
+          {
+            "node": "Is Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Contact Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Unverified Tag": {
+      "main": [
+        [
+          {
+            "node": "Log Contact Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Results": {
+      "main": [
+        [
+          {
+            "node": "Respond: Save Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Start Search": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Get Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Results": {
+      "main": [
+        [
+          {
+            "node": "Parse Snovio Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Start Email Lookup": {
+      "main": [
+        [
+          {
+            "node": "Wait Email Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Email Lookup": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Get Email Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Email Result": {
+      "main": [
+        [
+          {
+            "node": "Parse Email Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Verified?": {
+      "main": [
+        [
+          {
+            "node": "Add Verified Tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Unverified Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Verified Tag": {
+      "main": [
+        [
+          {
+            "node": "Log Contact Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Token": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Get Balance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Snovio: Get Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Token (Save)": {
+      "main": [
+        [
+          {
+            "node": "Need to Create List?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need to Create List?": {
+      "main": [
+        [
+          {
+            "node": "Create Snovio List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store List ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Snovio List": {
+      "main": [
+        [
+          {
+            "node": "Store List ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store List ID": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Contact Result": {
+      "main": [
+        [
+          {
+            "node": "Has Snovio List?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Snovio List?": {
+      "main": [
+        [
+          {
+            "node": "Add to Snovio List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Snovio List": {
+      "main": [
+        [
+          {
+            "node": "Loop Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Balance": {
+      "main": [
+        [
+          {
+            "node": "Merge Balance & Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snovio: Get Lists": {
+      "main": [
+        [
+          {
+            "node": "Merge Balance & Lists",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Balance & Lists": {
+      "main": [
+        [
+          {
+            "node": "Snovio: Start Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "8283b1d1-093d-4c87-9dc8-7dd8c4d0fc17",
+  "activeVersionId": "8283b1d1-093d-4c87-9dc8-7dd8c4d0fc17",
+  "versionCounter": 215,
+  "triggerCount": 2,
+  "shared": [
+    {
+      "updatedAt": "2026-01-10T18:22:25.856Z",
+      "createdAt": "2026-01-10T18:22:25.856Z",
+      "role": "workflow:owner",
+      "workflowId": "pvdUlL8oUiLlSvkD",
+      "projectId": "N52xeAo1hMPPT2P4",
+      "project": {
+        "updatedAt": "2025-11-13T21:33:12.830Z",
+        "createdAt": "2025-11-13T21:27:50.981Z",
+        "id": "N52xeAo1hMPPT2P4",
+        "name": "Mike Allen <mike.allen@perdigon-group.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "4fe16f81-4e05-4ba3-a58c-2970e1ede8e2",
+        "projectRelations": [
+          {
+            "updatedAt": "2025-11-13T21:27:50.981Z",
+            "createdAt": "2025-11-13T21:27:50.981Z",
+            "userId": "4fe16f81-4e05-4ba3-a58c-2970e1ede8e2",
+            "projectId": "N52xeAo1hMPPT2P4",
+            "user": {
+              "updatedAt": "2026-01-12T08:00:02.000Z",
+              "createdAt": "2025-11-13T21:27:50.390Z",
+              "id": "4fe16f81-4e05-4ba3-a58c-2970e1ede8e2",
+              "email": "mike.allen@perdigon-group.com",
+              "firstName": "Mike",
+              "lastName": "Allen",
+              "personalizationAnswers": {
+                "version": "v4",
+                "personalization_survey_submitted_at": "2025-11-13T21:33:59.435Z",
+                "personalization_survey_n8n_version": "1.119.1",
+                "companyType": "personal",
+                "reportedSource": "other",
+                "reportedSourceOther": "NETWORK CHUCK"
+              },
+              "settings": {
+                "userActivated": true,
+                "easyAIWorkflowOnboarded": true,
+                "firstSuccessfulWorkflowId": "Jlve26MM1bo0tkBq",
+                "userActivatedAt": 1763099359849,
+                "npsSurvey": {
+                  "responded": true,
+                  "lastShownAt": 1763500436856
+                }
+              },
+              "disabled": false,
+              "mfaEnabled": false,
+              "lastActiveAt": "2026-01-12",
+              "isPending": false
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-01-12T07:45:26.453Z",
+    "createdAt": "2026-01-12T07:45:26.453Z",
+    "versionId": "8283b1d1-093d-4c87-9dc8-7dd8c4d0fc17",
+    "workflowId": "pvdUlL8oUiLlSvkD",
+    "nodes": [
+      {
+        "id": "sticky-overview",
+        "name": "Overview",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "content": "## Snovio Contact Finder\n\n**Endpoints:**\n- GET /snovio-search?accountId=XXX\n- POST /snovio-save\n\n**Flow:**\n1. Get Account \u00e2\u2020\u2019 Extract domain\n2. Snovio Domain Search (1 credit)\n3. Auto-update Account fields\n4. Display prospect popup\n5. User selects contacts\n6. Email lookup (1 credit each)\n7. Create Zoho Contacts\n\n**Branding:** Perdigon dark theme",
+          "height": 400,
+          "width": 300,
+          "color": 4
+        }
+      },
+      {
+        "id": "webhook-search",
+        "name": "Webhook: Search",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          400,
+          300
+        ],
+        "webhookId": "snovio-search",
+        "parameters": {
+          "httpMethod": "GET",
+          "path": "snovio-search",
+          "responseMode": "responseNode",
+          "options": {}
+        }
+      },
+      {
+        "id": "webhook-save",
+        "name": "Webhook: Save",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          400,
+          600
+        ],
+        "webhookId": "snovio-save",
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "snovio-save",
+          "responseMode": "responseNode",
+          "options": {}
+        }
+      },
+      {
+        "id": "config-search",
+        "name": "Config (Search)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          620,
+          300
+        ],
+        "parameters": {
+          "jsCode": "const query = $input.first().json.query || {};\n\nconst CONFIG = {\n  SNOVIO_USER_ID: 'd37f94b18ce02ece5f401ce8683b258e',\n  SNOVIO_SECRET: '45b473e4d2f48e928c9bafd7fcbcd853',\n  ACCOUNT_ID: query.accountId || null,\n  LOGO_URL: 'https://raw.githubusercontent.com/mallen012/Perdigon-Directory/main/Blue%20Logo%20Only.png'\n};\n\nif (!CONFIG.ACCOUNT_ID) {\n  return [{ json: { error: 'Missing accountId parameter', CONFIG } }];\n}\n\nreturn [{ json: CONFIG }];"
+        }
+      },
+      {
+        "id": "config-save",
+        "name": "Config (Save)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          620,
+          600
+        ],
+        "parameters": {
+          "jsCode": "const body = $input.first().json.body || {};\n\nconst CONFIG = {\n  SNOVIO_USER_ID: 'd37f94b18ce02ece5f401ce8683b258e',\n  SNOVIO_SECRET: '45b473e4d2f48e928c9bafd7fcbcd853',\n  ACCOUNT_ID: body.accountId || null,\n  ACCOUNT_NAME: body.accountName || '',\n  DOMAIN: body.domain || '',\n  COMPANY_PHONE: body.companyPhone || '',\n  COMPANY_WEBSITE: body.companyWebsite || '',\n  SELECTED_PROSPECTS: body.prospects || [],\n  SNOVIO_LIST_ID: body.snovioListId || null,\n  NEW_LIST_NAME: body.newListName || null,\n  LOGO_URL: 'https://raw.githubusercontent.com/mallen012/Perdigon-Directory/main/Blue%20Logo%20Only.png'\n};\n\nif (!CONFIG.ACCOUNT_ID || CONFIG.SELECTED_PROSPECTS.length === 0) {\n  return [{ json: { error: 'Missing accountId or no prospects selected', CONFIG } }];\n}\n\nreturn [{ json: CONFIG }];"
+        }
+      },
+      {
+        "id": "check-account-id",
+        "name": "Has Account ID?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          840,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ACCOUNT_ID }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "get-zoho-account",
+        "name": "Get Zoho Account",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1060,
+          240
+        ],
+        "parameters": {
+          "url": "=https://www.zohoapis.com/crm/v2/Accounts/{{ $json.ACCOUNT_ID }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "zohoOAuth2Api",
+          "options": {}
+        },
+        "credentials": {
+          "zohoOAuth2Api": {
+            "id": "jcm850uJVwpPyj2c",
+            "name": "Zoho ALL account"
+          }
+        }
+      },
+      {
+        "id": "parse-account",
+        "name": "Parse Account",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1280,
+          240
+        ],
+        "parameters": {
+          "jsCode": "const response = $input.first().json;\nconst config = $('Config (Search)').first().json;\n\nconst account = response.data?.[0];\nif (!account) {\n  return [{ json: { error: 'Account not found', accountId: config.ACCOUNT_ID } }];\n}\n\n// Extract domain from website\nlet domain = null;\nif (account.Website) {\n  try {\n    let url = account.Website;\n    if (!url.startsWith('http')) url = 'https://' + url;\n    domain = new URL(url).hostname.replace('www.', '');\n  } catch (e) {\n    // Try simple extraction\n    domain = account.Website.replace(/^(https?:\\/\\/)?(www\\.)?/, '').split('/')[0];\n  }\n}\n\nreturn [{ json: {\n  ...config,\n  accountId: account.id,\n  accountName: account.Account_Name || '',\n  website: account.Website || null,\n  domain: domain,\n  currentPhone: account.Phone || null,\n  currentIndustry: account.Industry || null,\n  currentEmployees: account.No_of_Employees || null,\n  currentStreet: account.Billing_Street || null,\n  currentCity: account.Billing_City || null,\n  currentState: account.Billing_State || null,\n  currentZip: account.Billing_Code || null,\n  currentCountry: account.Billing_Country || null,\n  currentEmailDomain: account.Email_Domain || null\n}}];"
+        }
+      },
+      {
+        "id": "check-domain",
+        "name": "Has Domain?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1500,
+          240
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.domain }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "snovio-token",
+        "name": "Snovio: Get Token",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1720,
+          180
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.snov.io/v1/oauth/access_token",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ grant_type: 'client_credentials', client_id: $json.SNOVIO_USER_ID, client_secret: $json.SNOVIO_SECRET }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "snovio-domain-search",
+        "name": "Snovio: Start Search",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1940,
+          180
+        ],
+        "parameters": {
+          "url": "https://api.snov.io/v2/domain-search/prospects/start",
+          "method": "POST",
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ domain: $('Parse Account').first().json.domain }) }}",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $('Snovio: Get Token').first().json.access_token }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      {
+        "id": "parse-snovio-results",
+        "name": "Parse Snovio Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2600,
+          180
+        ],
+        "parameters": {
+          "jsCode": "const snovio = $input.first().json;\nconst accountData = $('Parse Account').first().json;\n\n// Get credits balance from Snovio: Get Balance node\nconst creditsData = $('Snovio: Get Balance').first().json;\nconst creditsBalance = parseInt(creditsData.data?.balance || '0');\nconst creditsUsed = creditsData.data?.unique_recipients_used || 0;\n\n// Get Snovio lists from the Get Lists node\nconst listsData = $('Snovio: Get Lists').first().json;\nconst snovioLists = (listsData.list || []).map(list => ({\n  id: list.id,\n  name: list.name\n}));\n\n// v2 API response: data[] is the array of prospects, meta.total_count is the total\nconst rawProspects = snovio.data || [];\nconst totalCount = snovio.meta?.total_count || rawProspects.length;\n\nconst prospects = rawProspects.map((p, idx) => {\n  // Check if Snovio already has cached email for this prospect\n  const cachedEmail = p.emails?.emails?.[0]?.email || null;\n  const cachedStatus = p.emails?.emails?.[0]?.smtp_status || null;\n\n  // Extract prospect hash from search_emails_start URL (if present)\n  const emailUrl = p.search_emails_start || '';\n  const hashMatch = emailUrl.match(/start\\/([a-f0-9]+)$/);\n  const prospectHash = hashMatch ? hashMatch[1] : null;\n\n  // Determine email and status\n  let email = null;\n  let status = 'unknown';\n\n  if (cachedEmail) {\n    // Snovio already has the email cached - use it directly\n    email = cachedEmail;\n    status = cachedStatus || 'valid';\n  } else if (p.email) {\n    // Direct email field (legacy format)\n    email = p.email;\n    status = 'valid';\n  }\n\n  return {\n    id: prospectHash || `prospect-${idx}`,\n    firstName: p.first_name || '',\n    lastName: p.last_name || '',\n    fullName: `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown',\n    position: p.position || '',\n    email: email,\n    sourcePage: p.source_page || null,\n    status: status,\n    prospectHash: prospectHash,\n    emailLookupUrl: p.search_emails_start || null,\n    hasCachedEmail: !!cachedEmail\n  };\n});\n\n// Company info from Snovio meta\nconst meta = snovio.meta || {};\nconst companyInfo = {\n  companyName: meta.company_name || null,\n  website: accountData.domain,\n  logoUrl: meta.logo || null,\n  phone: meta.hq_phone || null,\n  industry: meta.industry || null,\n  city: meta.city || null,\n  state: meta.state || null,\n  country: meta.country || null,\n  street: meta.street || null,\n  postalCode: meta.postal_code || null,\n  employeeCount: meta.employee_count || null\n};\n\n// Build update fields for Account (only if currently empty in Zoho)\nconst accountUpdates = {};\n\n// Phone\nif (!accountData.currentPhone && meta.hq_phone) {\n  accountUpdates.Phone = meta.hq_phone;\n}\n\n// Industry\nif (!accountData.currentIndustry && meta.industry) {\n  accountUpdates.Industry = meta.industry;\n}\n\n// Billing Address fields\nif (!accountData.currentStreet && meta.street) {\n  accountUpdates.Billing_Street = meta.street;\n}\nif (!accountData.currentCity && meta.city) {\n  accountUpdates.Billing_City = meta.city;\n}\nif (!accountData.currentState && meta.state) {\n  accountUpdates.Billing_State = meta.state;\n}\nif (!accountData.currentZip && meta.postal_code) {\n  accountUpdates.Billing_Code = meta.postal_code;\n}\nif (!accountData.currentCountry && meta.country) {\n  accountUpdates.Billing_Country = meta.country;\n}\n\n// Employee count\nif (!accountData.currentEmployees && meta.employee_count) {\n  accountUpdates.Employees = meta.employee_count;\n}\n\n// Email Domain - add domain to account if not already set\nif (!accountData.currentEmailDomain && accountData.domain) {\n  accountUpdates.Email_Domain = accountData.domain;\n}\n\nreturn [{ json: {\n  ...accountData,\n  companyInfo,\n  prospects,\n  prospectCount: prospects.length,\n  totalCount: totalCount,\n  hasMorePages: !!snovio.links?.next,\n  accountUpdates,\n  hasUpdates: Object.keys(accountUpdates).length > 0,\n  apiSuccess: snovio.status === 'completed' || rawProspects.length > 0,\n  creditsBalance: creditsBalance,\n  creditsUsed: creditsUsed,\n  snovioLists: snovioLists\n}}];"
+        }
+      },
+      {
+        "id": "check-updates",
+        "name": "Has Account Updates?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2820,
+          180
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.hasUpdates }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "update-zoho-account",
+        "name": "Update Zoho Account",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3040,
+          120
+        ],
+        "parameters": {
+          "method": "PUT",
+          "url": "=https://www.zohoapis.com/crm/v2/Accounts/{{ $json.accountId }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "zohoOAuth2Api",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ data: [$json.accountUpdates] }) }}",
+          "options": {}
+        },
+        "credentials": {
+          "zohoOAuth2Api": {
+            "id": "jcm850uJVwpPyj2c",
+            "name": "Zoho ALL account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "merge-to-popup",
+        "name": "Merge to Popup",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [
+          3260,
+          180
+        ],
+        "parameters": {
+          "mode": "append"
+        }
+      },
+      {
+        "id": "build-popup-html",
+        "name": "Build Popup HTML",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3480,
+          180
+        ],
+        "parameters": {
+          "jsCode": "const data = $('Parse Snovio Results').first().json;\nconst prospects = data.prospects || [];\nconst accountName = data.accountName || 'Account';\nconst domain = data.domain || '';\nconst logoUrl = data.LOGO_URL;\nconst totalInDb = data.totalCount || 0;\nconst creditsBalance = data.creditsBalance || 0;\nconst companyPhone = data.companyInfo?.phone || data.currentPhone || '';\nconst companyWebsite = data.companyInfo?.website || domain;\n\n// Snovio lists for dropdown\nconst snovioLists = data.snovioLists || [];\n\nlet rows = '';\nif (prospects.length === 0) {\n  rows = '<tr><td colspan=\"5\" style=\"text-align:center;padding:40px;color:#94a3b8;\">' +\n    (totalInDb > 0 ? '<div style=\"font-size:48px;margin-bottom:16px;\">&#128202;</div><div style=\"font-size:18px;margin-bottom:8px;\">' + totalInDb + ' emails in Snovio database</div><div style=\"font-size:13px;\">Prospect data is being processed. Try again in a moment.</div>' : 'No contacts found for this domain') +\n    '</td></tr>';\n} else {\n  prospects.forEach((p, i) => {\n    const hasEmail = p.email && p.email.length > 0;\n    const rowBg = hasEmail ? 'rgba(100,200,120,0.15)' : 'rgba(255,180,80,0.15)';\n    const statusIcon = hasEmail ? '&#10004;' : '?';\n    const statusColor = hasEmail ? '#4ade80' : '#fbbf24';\n    const linkedInLink = p.sourcePage\n      ? '<a href=\"' + p.sourcePage + '\" target=\"_blank\" style=\"color:#60a5fa;text-decoration:none;\">LinkedIn &#8599;</a>'\n      : '<span style=\"color:#64748b;\">&mdash;</span>';\n\n    rows += '<tr style=\"background:' + rowBg + ';\">' +\n      '<td style=\"padding:12px;text-align:center;\">' +\n        '<input type=\"checkbox\" name=\"prospect\" value=\"' + p.id + '\" ' +\n          'data-firstname=\"' + (p.firstName || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-lastname=\"' + (p.lastName || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-position=\"' + (p.position || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-email=\"' + (p.email || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-linkedin=\"' + (p.sourcePage || '').replace(/\"/g, '&quot;') + '\" ' +\n          'data-status=\"' + p.status + '\" ' +\n          'data-hash=\"' + (p.prospectHash || '') + '\" ' +\n          'data-emaillookupurl=\"' + (p.emailLookupUrl || '').replace(/\"/g, '&quot;') + '\" ' +\n          'style=\"width:18px;height:18px;cursor:pointer;\">' +\n      '</td>' +\n      '<td style=\"padding:12px;\">' +\n        '<div style=\"font-weight:500;\">' + p.fullName + '</div>' +\n        (p.email ? '<div style=\"font-size:12px;color:#94a3b8;\">' + p.email + '</div>' : '<div style=\"font-size:12px;color:#fbbf24;\">Email lookup required</div>') +\n      '</td>' +\n      '<td style=\"padding:12px;\">' + linkedInLink + '</td>' +\n      '<td style=\"padding:12px;color:#cbd5e1;\">' + (p.position || '&mdash;') + '</td>' +\n      '<td style=\"padding:12px;text-align:center;\"><span style=\"color:' + statusColor + ';font-weight:bold;\">' + statusIcon + '</span></td>' +\n      '</tr>';\n  });\n}\n\n// Build Snovio list dropdown options\nlet listOptions = '<option value=\"\">-- Don\\'t add to Snovio list --</option><option value=\"__new__\">+ Create new list</option>';\nsnovioLists.forEach(list => {\n  listOptions += '<option value=\"' + list.id + '\">' + (list.name || '').replace(/\"/g, '&quot;') + '</option>';\n});\n\n// Website link - clickable\nconst websiteLink = companyWebsite\n  ? '<a href=\"https://' + companyWebsite.replace(/^https?:\\/\\//, '') + '\" target=\"_blank\" style=\"color:#60a5fa;text-decoration:none;\">' + domain + ' &#8599;</a>'\n  : domain;\n\nconst html = '<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Snovio Contact Finder</title><style>*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#1a1a2e;color:#fff;margin:0;padding:20px;min-height:100vh}.container{max-width:900px;margin:0 auto}.header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.1)}.logo{height:40px}.header-content{flex:1}.title{font-size:24px;font-weight:600}.subtitle{color:#94a3b8;font-size:14px;margin-top:4px}.header-badges{display:flex;gap:10px;align-items:center}.credits-badge{background:linear-gradient(135deg,#10b981,#059669);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600}.db-count{background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600}.card{background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:16px;overflow:hidden}.table-container{overflow-x:auto;max-height:500px;overflow-y:auto}table{width:100%;border-collapse:collapse}th{background:rgba(0,0,0,0.3);padding:14px 12px;text-align:left;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;position:sticky;top:0;z-index:10}th:first-child{text-align:center;width:50px}th:last-child{text-align:center;width:60px}tr{border-bottom:1px solid rgba(255,255,255,0.05)}tr:hover{background:rgba(255,255,255,0.05)!important}.footer{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:rgba(0,0,0,0.2);flex-wrap:wrap;gap:12px}.count{color:#94a3b8;font-size:14px}.btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s}.btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,0.4)}.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}.legend{display:flex;gap:20px;margin-top:16px;font-size:13px;color:#94a3b8}.legend-item{display:flex;align-items:center;gap:6px}.legend-dot{width:12px;height:12px;border-radius:3px}.legend-verified{background:rgba(100,200,120,0.4)}.legend-unverified{background:rgba(255,180,80,0.4)}.list-section{display:flex;align-items:center;gap:12px;width:100%;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1)}.list-label{color:#94a3b8;font-size:13px;white-space:nowrap}.list-select{background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;max-width:300px}.list-select:focus{outline:none;border-color:#6366f1}.new-list-input{background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 12px;border-radius:6px;font-size:13px;display:none;flex:1;max-width:200px}.new-list-input:focus{outline:none;border-color:#6366f1}</style></head><body><div class=\"container\"><div class=\"header\"><img src=\"' + logoUrl + '\" alt=\"Perdigon\" class=\"logo\"><div class=\"header-content\"><div class=\"title\">Snovio Contact Finder</div><div class=\"subtitle\">' + accountName + ' &#8226; ' + websiteLink + '</div></div><div class=\"header-badges\"><div class=\"credits-badge\">&#128179; ' + creditsBalance.toLocaleString() + ' credits</div>' + (totalInDb > 0 ? '<div class=\"db-count\">&#128202; ' + totalInDb + ' in database</div>' : '') + '</div></div><form id=\"contactForm\"><input type=\"hidden\" name=\"accountId\" value=\"' + data.accountId + '\"><input type=\"hidden\" name=\"accountName\" value=\"' + accountName + '\"><input type=\"hidden\" name=\"domain\" value=\"' + domain + '\"><input type=\"hidden\" name=\"companyPhone\" value=\"' + companyPhone + '\"><input type=\"hidden\" name=\"companyWebsite\" value=\"' + companyWebsite + '\"><div class=\"card\"><div class=\"table-container\"><table><thead><tr><th>Select</th><th>Contact</th><th>Profile</th><th>Position</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div><div class=\"footer\"><div class=\"count\"><span id=\"selectedCount\">0</span> of ' + prospects.length + ' selected</div><div class=\"list-section\"><span class=\"list-label\">Add to Snovio list:</span><select name=\"snovioList\" class=\"list-select\" id=\"listSelect\">' + listOptions + '</select><input type=\"text\" name=\"newListName\" class=\"new-list-input\" id=\"newListInput\" placeholder=\"Enter new list name\"></div><button type=\"submit\" class=\"btn\" id=\"importBtn\"' + (prospects.length === 0 ? ' disabled' : '') + '>Import Selected</button></div></div></form><div class=\"legend\"><div class=\"legend-item\"><div class=\"legend-dot legend-verified\"></div><span>Has Email</span></div><div class=\"legend-item\"><div class=\"legend-dot legend-unverified\"></div><span>Needs Email Lookup (1 credit)</span></div></div></div><script>const form=document.getElementById(\"contactForm\");const checkboxes=document.querySelectorAll(\"input[name=prospect]\");const countEl=document.getElementById(\"selectedCount\");const importBtn=document.getElementById(\"importBtn\");const listSelect=document.getElementById(\"listSelect\");const newListInput=document.getElementById(\"newListInput\");function updateCount(){const selected=document.querySelectorAll(\"input[name=prospect]:checked\").length;countEl.textContent=selected;importBtn.disabled=selected===0}checkboxes.forEach(cb=>cb.addEventListener(\"change\",updateCount));listSelect.addEventListener(\"change\",function(){newListInput.style.display=this.value===\"__new__\"?\"block\":\"none\";if(this.value===\"__new__\")newListInput.focus()});form.addEventListener(\"submit\",async(e)=>{e.preventDefault();importBtn.disabled=true;importBtn.textContent=\"Importing...\";const selected=[];document.querySelectorAll(\"input[name=prospect]:checked\").forEach(cb=>{selected.push({id:cb.value,firstName:cb.dataset.firstname,lastName:cb.dataset.lastname,position:cb.dataset.position,email:cb.dataset.email||null,linkedin:cb.dataset.linkedin,status:cb.dataset.status,prospectHash:cb.dataset.hash,emailLookupUrl:cb.dataset.emaillookupurl})});const snovioListId=listSelect.value===\"__new__\"?null:listSelect.value;const newListName=listSelect.value===\"__new__\"?newListInput.value.trim():null;try{const response=await fetch(\"https://n8n.srv1127126.hstgr.cloud/webhook/snovio-save\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({accountId:form.querySelector(\"[name=accountId]\").value,accountName:form.querySelector(\"[name=accountName]\").value,domain:form.querySelector(\"[name=domain]\").value,companyPhone:form.querySelector(\"[name=companyPhone]\").value,companyWebsite:form.querySelector(\"[name=companyWebsite]\").value,prospects:selected,snovioListId:snovioListId||null,newListName:newListName||null})});const html=await response.text();document.body.innerHTML=html}catch(err){alert(\"Error: \"+err.message);importBtn.disabled=false;importBtn.textContent=\"Import Selected\"}})</script></body></html>';\n\nreturn [{ json: { html, prospectCount: prospects.length } }];"
+        }
+      },
+      {
+        "id": "respond-popup",
+        "name": "Respond: Popup",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          3700,
+          180
+        ],
+        "parameters": {
+          "respondWith": "text",
+          "responseBody": "={{ $json.html }}",
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/html"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "respond-no-domain",
+        "name": "Respond: No Domain",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          1720,
+          360
+        ],
+        "parameters": {
+          "respondWith": "text",
+          "responseBody": "=<!DOCTYPE html><html><head><title>No Website</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00f0\u0178\u0152\u0090</div><h1>No Website Found</h1><p>This Account doesn't have a Website field populated.</p><p style=\"color:#94a3b8;margin-top:20px;\">Add a website URL to the Account, then try again.</p></div></body></html>",
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/html"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "respond-error",
+        "name": "Respond: Error",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          840,
+          440
+        ],
+        "parameters": {
+          "respondWith": "text",
+          "responseBody": "=<!DOCTYPE html><html><head><title>Error</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00e2\u0161\u00a0\u00ef\u00b8\u008f</div><h1>Missing Account ID</h1><p>No accountId parameter was provided.</p></div></body></html>",
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/html"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "check-save-data",
+        "name": "Has Save Data?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          840,
+          600
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ACCOUNT_ID }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              },
+              {
+                "leftValue": "={{ $json.SELECTED_PROSPECTS.length }}",
+                "rightValue": 0,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "snovio-token-save",
+        "name": "Snovio: Get Token (Save)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1060,
+          540
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.snov.io/v1/oauth/access_token",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ grant_type: 'client_credentials', client_id: $('Config (Save)').first().json.SNOVIO_USER_ID, client_secret: $('Config (Save)').first().json.SNOVIO_SECRET }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "prepare-prospects",
+        "name": "Prepare Prospects",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1280,
+          540
+        ],
+        "parameters": {
+          "jsCode": "const config = $('Config (Save)').first().json;\nconst listData = $('Store List ID').first().json;\nconst token = listData.accessToken;\nconst snovioListId = listData.snovioListId;\n\nreturn config.SELECTED_PROSPECTS.map(p => ({\n  json: {\n    ...p,\n    accountId: config.ACCOUNT_ID,\n    accountName: config.ACCOUNT_NAME,\n    domain: config.DOMAIN,\n    companyPhone: config.COMPANY_PHONE,\n    companyWebsite: config.COMPANY_WEBSITE,\n    accessToken: token,\n    snovioListId: snovioListId\n  }\n}));"
+        }
+      },
+      {
+        "id": "loop-prospects",
+        "name": "Loop Prospects",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1500,
+          540
+        ],
+        "parameters": {
+          "options": {}
+        }
+      },
+      {
+        "id": "snovio-email-finder",
+        "name": "Snovio: Start Email Lookup",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1720,
+          540
+        ],
+        "parameters": {
+          "jsCode": "// Get prospect data from Loop Prospects\nconst prospect = $input.first().json;\nconst { firstName, lastName, domain, emailLookupUrl, accessToken, email } = prospect;\n\n// FIRST: Check if we already have a valid email (from Snovio cached data)\nif (email && email !== null && email.includes('@')) {\n  // Email already exists - pass it through without any API call\n  return [{ \n    json: { \n      ...prospect,\n      lookupMethod: 'cached',\n      email: email,\n      status: 'valid'\n    } \n  }];\n}\n\n// Check if we have a valid emailLookupUrl\nif (emailLookupUrl && emailLookupUrl.startsWith('http')) {\n  // Use the existing emailLookupUrl (from domain search)\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: emailLookupUrl,\n      headers: {\n        'Authorization': `Bearer ${accessToken}`,\n        'Content-Type': 'application/json'\n      }\n    });\n    return [{ json: { ...response, lookupMethod: 'emailLookupUrl' } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailLookupUrl' } }];\n  }\n} else {\n  // Use Snovio Email Finder API (add-names-to-find-emails)\n  // Must manually encode as form-urlencoded string\n  try {\n    const formBody = `access_token=${encodeURIComponent(accessToken)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&domain=${encodeURIComponent(domain)}`;\n    \n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.snov.io/v1/add-names-to-find-emails',\n      headers: {\n        'Content-Type': 'application/x-www-form-urlencoded'\n      },\n      body: formBody\n    });\n    \n    // Parse the response if it's a string\n    let parsed = response;\n    if (typeof response === 'string') {\n      try {\n        parsed = JSON.parse(response);\n      } catch (e) {\n        // Keep as string if not valid JSON\n      }\n    }\n    \n    // Return with metadata for next step\n    return [{ \n      json: { \n        ...parsed,\n        lookupMethod: 'emailFinder',\n        firstName,\n        lastName,\n        domain,\n        accessToken\n      } \n    }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailFinder' } }];\n  }\n}"
+        },
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      {
+        "id": "parse-email-result",
+        "name": "Parse Email Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2270,
+          540
+        ],
+        "parameters": {
+          "jsCode": "// Get the email result from previous node\nconst emailResult = $('Snovio: Get Email Result').first().json;\nconst prospect = $('Loop Prospects').first().json;\nconst accessToken = prospect.accessToken;\n\n// Helper to encode form data\nfunction encodeForm(obj) {\n  return Object.keys(obj)\n    .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]))\n    .join('&');\n}\n\nlet email = null;\nlet emailStatus = 'not_found';\nlet confidence = 0;\n\n// Handle errors from previous steps\nif (emailResult.error) {\n  return [{\n    json: {\n      ...prospect,\n      email: null,\n      emailStatus: 'error',\n      emailError: emailResult.error,\n      confidence: 0\n    }\n  }];\n}\n\n// Handle different response formats based on lookup method\nif (emailResult.lookupMethod === 'cached') {\n  // Email was already cached from Snovio - extract from emails array or direct field\n  if (emailResult.emails && emailResult.emails.length > 0) {\n    const emailData = emailResult.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.emailStatus || 'valid';\n    confidence = 100; // Cached emails are verified\n  } else if (emailResult.email) {\n    email = emailResult.email;\n    emailStatus = 'valid';\n    confidence = 100;\n  }\n  \n} else if (emailResult.lookupMethod === 'emailLookupUrl') {\n  // Format from emailLookupUrl method\n  const data = emailResult.data || emailResult;\n  \n  if (data.emails && data.emails.length > 0) {\n    const emailData = data.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.status || 'found';\n    confidence = emailData.probability || 0;\n  } else if (data.status === 'in_progress') {\n    emailStatus = 'in_progress';\n  }\n  \n} else if (emailResult.lookupMethod === 'emailFinder') {\n  // Format from Email Finder API (get-emails-from-names)\n  const data = emailResult.data || emailResult;\n  \n  // Check various places for email\n  if (data.emails && data.emails.length > 0) {\n    const emailData = data.emails[0];\n    email = emailData.email;\n    emailStatus = emailData.status || 'found';\n    confidence = emailData.probability || 0;\n  } else if (data.email) {\n    // Direct email field\n    email = data.email;\n    emailStatus = data.emailStatus || 'found';\n    confidence = data.accuracy || 0;\n  } else if (emailResult.email) {\n    // Email at top level of result\n    email = emailResult.email;\n    emailStatus = 'found';\n    confidence = emailResult.accuracy || 0;\n  }\n  \n  // If no email found and still in_progress, poll one more time\n  if (!email && (data.status === 'in_progress' || emailResult.sent === true)) {\n    try {\n      // Wait 2 seconds and retry\n      await new Promise(resolve => setTimeout(resolve, 2000));\n      \n      const { firstName, lastName, domain } = emailResult;\n      const formBody = encodeForm({\n        access_token: accessToken,\n        first_name: firstName,\n        last_name: lastName,\n        domain: domain\n      });\n      \n      const retryResponse = await this.helpers.httpRequest({\n        method: 'POST',\n        url: 'https://api.snov.io/v1/get-emails-from-names',\n        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n        body: formBody\n      });\n      \n      const retryData = retryResponse.data || retryResponse;\n      if (retryData.emails && retryData.emails.length > 0) {\n        const emailData = retryData.emails[0];\n        email = emailData.email;\n        emailStatus = emailData.status || 'found';\n        confidence = emailData.probability || 0;\n      } else if (retryResponse.email) {\n        email = retryResponse.email;\n        emailStatus = 'found';\n        confidence = retryResponse.accuracy || 0;\n      }\n    } catch (e) {\n      // Ignore retry errors\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...prospect,\n    email,\n    emailStatus,\n    confidence,\n    lookupMethod: emailResult.lookupMethod\n  }\n}];"
+        }
+      },
+      {
+        "id": "create-zoho-contact",
+        "name": "Create Zoho Contact",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2490,
+          540
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://www.zohoapis.com/crm/v2/Contacts",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "zohoOAuth2Api",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ data: [{ First_Name: $json.firstName || '', Last_Name: $json.lastName || 'Unknown', Email: $json.email || null, Title: $json.position || null, Phone: $json.companyPhone || null, LinkedIn_Contact_Profile_URL: $json.linkedin || null, Website: $json.companyWebsite || null, Account_Name: { id: $json.accountId }, Lead_Source: 'Snov.io', Lead_Source_Perdigon: 'Snovio', Enriched_Source: 'Snovio', Snov_io_ID: $json.id || $json.prospectHash || null }], trigger: ['workflow'] }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "zohoOAuth2Api": {
+            "id": "jcm850uJVwpPyj2c",
+            "name": "Zoho ALL account"
+          }
+        },
+        "onError": "continueRegularOutput",
+        "alwaysOutputData": true
+      },
+      {
+        "id": "contact-created-check",
+        "name": "Contact Created?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2380,
+          540
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.data?.[0]?.code }}",
+                "rightValue": "SUCCESS",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "add-unverified-tag",
+        "name": "Add Unverified Tag",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2750,
+          660
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "=https://www.zohoapis.com/crm/v2/Contacts/{{ $json.data[0].details.id }}/actions/add_tags?tag_names=Email%20Unverified",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "zohoOAuth2Api",
+          "options": {}
+        },
+        "credentials": {
+          "zohoOAuth2Api": {
+            "id": "jcm850uJVwpPyj2c",
+            "name": "Zoho ALL account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "id": "log-contact-result",
+        "name": "Log Contact Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2820,
+          540
+        ],
+        "parameters": {
+          "jsCode": "const createResult = $('Create Zoho Contact').first().json;\nconst prospectData = $('Parse Email Result').first().json;\n\nconst success = createResult.data?.[0]?.code === 'SUCCESS';\nconst contactId = createResult.data?.[0]?.details?.id || null;\n\nreturn [{ json: {\n  success,\n  contactId,\n  name: `${prospectData.firstName} ${prospectData.lastName}`,\n  email: prospectData.email,\n  isVerified: prospectData.isVerified,\n  error: success ? null : (createResult.data?.[0]?.message || 'Unknown error')\n}}];"
+        }
+      },
+      {
+        "id": "collect-results",
+        "name": "Collect Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3040,
+          540
+        ],
+        "parameters": {
+          "jsCode": "const allResults = $input.all().map(i => i.json);\nconst config = $('Config (Save)').first().json;\n\nconst successful = allResults.filter(r => r.success);\nconst failed = allResults.filter(r => !r.success);\n\nreturn [{ json: {\n  accountName: config.ACCOUNT_NAME,\n  totalSelected: config.SELECTED_PROSPECTS.length,\n  totalCreated: successful.length,\n  totalFailed: failed.length,\n  created: successful,\n  failed: failed,\n  logoUrl: config.LOGO_URL\n}}];"
+        }
+      },
+      {
+        "id": "respond-save-success",
+        "name": "Respond: Save Success",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          3260,
+          540
+        ],
+        "parameters": {
+          "respondWith": "text",
+          "responseBody": "=<!DOCTYPE html><html><head><title>Import Complete</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;padding:40px;text-align:center;max-width:500px}.icon{font-size:72px;margin-bottom:16px}h1{color:#4ade80;margin:0 0 8px}.stat{font-size:48px;font-weight:700;background:linear-gradient(135deg,#4ade80,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.label{color:#64748b;font-size:14px;text-transform:uppercase}.subtitle{color:#94a3b8;margin-top:8px}.countdown{color:#64748b;font-size:13px;margin-top:24px}.manual-close{display:none;margin-top:16px}.manual-close a{color:#60a5fa;text-decoration:none;font-size:14px}.manual-close a:hover{text-decoration:underline}</style></head><body><div class=\"card\"><div class=\"icon\">&#10004;</div><h1>Import Complete</h1><div class=\"subtitle\">{{ $json.accountName }}</div><div style=\"margin:24px 0\"><div class=\"stat\">{{ $json.totalCreated }}</div><div class=\"label\">Contacts Created</div></div>{{ $json.totalFailed > 0 ? '<div style=\"color:#fbbf24;font-size:14px;\">' + $json.totalFailed + ' skipped (already exist in Zoho)</div>' : '' }}<div class=\"countdown\">Closing in <span id=\"t\">5</span>s...</div><div class=\"manual-close\" id=\"manualClose\"><a href=\"#\" onclick=\"tryClose();return false;\">Click here to close</a> or close this tab manually</div></div><script>(function(){var c=5;var countdownEl=document.getElementById('t');var manualEl=document.getElementById('manualClose');var timer=setInterval(function(){c--;countdownEl.textContent=c;if(c<=0){clearInterval(timer);tryClose();}},1000);function tryClose(){try{window.close();}catch(e){}setTimeout(function(){try{self.close();}catch(e){}},100);setTimeout(function(){try{open(location,'_self').close();}catch(e){}},200);setTimeout(function(){countdownEl.parentElement.innerHTML='You can close this window now';manualEl.style.display='block';},500);}window.tryClose=tryClose;})();</script></body></html>",
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/html"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "respond-save-error",
+        "name": "Respond: Save Error",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          1060,
+          720
+        ],
+        "parameters": {
+          "respondWith": "text",
+          "responseBody": "=<!DOCTYPE html><html><head><title>Error</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:rgba(255,255,255,0.1);border-radius:20px;padding:40px;text-align:center;max-width:500px}.icon{font-size:64px;margin-bottom:20px}h1{color:#f87171}</style></head><body><div class=\"card\"><div class=\"icon\">\u00e2\u0161\u00a0\u00ef\u00b8\u008f</div><h1>Import Error</h1><p>{{ $('Config (Save)').first().json.error || 'Missing data or no prospects selected' }}</p></div></body></html>",
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/html"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "wait-for-results",
+        "name": "Wait 3s",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          2160,
+          180
+        ],
+        "parameters": {
+          "amount": 3,
+          "unit": "seconds"
+        }
+      },
+      {
+        "id": "snovio-get-results",
+        "name": "Snovio: Get Results",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2380,
+          180
+        ],
+        "parameters": {
+          "url": "={{ $('Snovio: Start Search').first().json.links.result }}",
+          "method": "GET",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $('Snovio: Get Token').first().json.access_token }}"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "wait-email-lookup",
+        "name": "Wait Email Lookup",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          1830,
+          540
+        ],
+        "parameters": {
+          "amount": 2,
+          "unit": "seconds"
+        }
+      },
+      {
+        "id": "snovio-get-email",
+        "name": "Snovio: Get Email Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2050,
+          540
+        ],
+        "parameters": {
+          "jsCode": "// Get the lookup result from previous node\nconst lookupResult = $('Snovio: Start Email Lookup').first().json;\nconst prospect = $('Loop Prospects').first().json;\nconst accessToken = prospect.accessToken;\n\n// Check which lookup method was used\nif (lookupResult.lookupMethod === 'cached') {\n  // Email was already cached - just pass through the data\n  return [{ json: { \n    ...lookupResult,\n    emails: [{ email: lookupResult.email, emailStatus: 'valid' }]\n  } }];\n  \n} else if (lookupResult.lookupMethod === 'emailLookupUrl') {\n  // Use the result URL from the original lookup\n  const resultUrl = lookupResult.links?.result;\n  if (!resultUrl) {\n    return [{ json: { ...lookupResult, error: 'No result URL available' } }];\n  }\n  \n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url: resultUrl,\n      headers: {\n        'Authorization': `Bearer ${accessToken}`\n      }\n    });\n    return [{ json: { ...response, lookupMethod: 'emailLookupUrl' } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailLookupUrl' } }];\n  }\n  \n} else if (lookupResult.lookupMethod === 'emailFinder') {\n  // Use Snovio get-emails-from-names API\n  const { firstName, lastName, domain } = lookupResult;\n  \n  // Must manually encode as form-urlencoded string\n  try {\n    const formBody = `access_token=${encodeURIComponent(accessToken)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&domain=${encodeURIComponent(domain)}`;\n    \n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.snov.io/v1/get-emails-from-names',\n      headers: {\n        'Content-Type': 'application/x-www-form-urlencoded'\n      },\n      body: formBody\n    });\n    \n    // Parse the response if it's a string\n    let parsed = response;\n    if (typeof response === 'string') {\n      try {\n        parsed = JSON.parse(response);\n      } catch (e) {\n        // Keep as string if not valid JSON\n      }\n    }\n    \n    return [{ json: { ...parsed, lookupMethod: 'emailFinder', firstName, lastName, domain } }];\n  } catch (error) {\n    return [{ json: { error: error.message, lookupMethod: 'emailFinder' } }];\n  }\n  \n} else {\n  // Unknown lookup method, pass through\n  return [{ json: { ...lookupResult, error: 'Unknown lookup method' } }];\n}"
+        }
+      },
+      {
+        "id": "is-verified-check",
+        "name": "Is Verified?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2550,
+          540
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "verified-condition",
+                "leftValue": "={{ $json.isVerified }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "add-verified-tag",
+        "name": "Add Verified Tag",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2750,
+          420
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "=https://www.zohoapis.com/crm/v2/Contacts/{{ $json.contactId }}/actions/add_tags?tag_names=Email%20Verified",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "zohoOAuth2Api",
+          "options": {}
+        }
+      },
+      {
+        "id": "snovio-get-balance",
+        "name": "Snovio: Get Balance",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1830,
+          180
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "https://api.snov.io/v1/get-balance",
+          "authentication": "none",
+          "sendQuery": true,
+          "specifyQuery": "keypair",
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "access_token",
+                "value": "={{ $json.access_token }}"
+              }
+            ]
+          },
+          "sendHeaders": false,
+          "sendBody": false,
+          "options": {}
+        }
+      },
+      {
+        "id": "snovio-get-lists",
+        "name": "Snovio: Get Lists",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1830,
+          300
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "https://api.snov.io/v1/get-user-lists",
+          "authentication": "none",
+          "sendQuery": true,
+          "specifyQuery": "keypair",
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "access_token",
+                "value": "={{ $('Snovio: Get Token').first().json.access_token }}"
+              }
+            ]
+          },
+          "sendHeaders": false,
+          "sendBody": false,
+          "options": {}
+        }
+      },
+      {
+        "id": "check-need-create-list",
+        "name": "Need to Create List?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1170,
+          540
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "1",
+                "leftValue": "={{ $('Config (Save)').first().json.NEW_LIST_NAME }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "create-snovio-list",
+        "name": "Create Snovio List",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1390,
+          480
+        ],
+        "parameters": {
+          "url": "https://api.snov.io/v1/lists",
+          "method": "POST",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "access_token",
+                "value": "={{ $('Snovio: Get Token (Save)').first().json.access_token }}"
+              },
+              {
+                "name": "name",
+                "value": "={{ $('Config (Save)').first().json.NEW_LIST_NAME }}"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "store-list-id",
+        "name": "Store List ID",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1610,
+          540
+        ],
+        "parameters": {
+          "jsCode": "const config = $('Config (Save)').first().json;\n\n// Get the list ID - either from the newly created list or the selected existing one\nlet listId = config.SNOVIO_LIST_ID;\n\n// If we created a new list, get its ID\ntry {\n  const createResult = $('Create Snovio List').first();\n  if (createResult && createResult.json && createResult.json.id) {\n    listId = createResult.json.id;\n  }\n} catch (e) {\n  // List wasn't created, use the existing one\n}\n\nreturn [{ json: {\n  snovioListId: listId,\n  accessToken: $('Snovio: Get Token (Save)').first().json.access_token\n}}];"
+        }
+      },
+      {
+        "id": "check-has-list",
+        "name": "Has Snovio List?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          2930,
+          540
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "1",
+                "leftValue": "={{ $('Prepare Prospects').first().json.snovioListId }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "add-to-snovio-list",
+        "name": "Add to Snovio List",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3150,
+          480
+        ],
+        "parameters": {
+          "url": "https://api.snov.io/v1/add-prospect-to-list",
+          "method": "POST",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "access_token",
+                "value": "={{ $('Prepare Prospects').first().json.accessToken }}"
+              },
+              {
+                "name": "email",
+                "value": "={{ $('Parse Email Result').first().json.email }}"
+              },
+              {
+                "name": "listId",
+                "value": "={{ $('Prepare Prospects').first().json.snovioListId }}"
+              },
+              {
+                "name": "firstName",
+                "value": "={{ $('Parse Email Result').first().json.firstName }}"
+              },
+              {
+                "name": "lastName",
+                "value": "={{ $('Parse Email Result').first().json.lastName }}"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "merge-balance-lists",
+        "name": "Merge Balance & Lists",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [
+          1830,
+          240
+        ],
+        "parameters": {
+          "mode": "append"
+        }
+      }
+    ],
+    "connections": {
+      "Webhook: Search": {
+        "main": [
+          [
+            {
+              "node": "Config (Search)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook: Save": {
+        "main": [
+          [
+            {
+              "node": "Config (Save)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Config (Search)": {
+        "main": [
+          [
+            {
+              "node": "Has Account ID?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Config (Save)": {
+        "main": [
+          [
+            {
+              "node": "Has Save Data?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Account ID?": {
+        "main": [
+          [
+            {
+              "node": "Get Zoho Account",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond: Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Zoho Account": {
+        "main": [
+          [
+            {
+              "node": "Parse Account",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Account": {
+        "main": [
+          [
+            {
+              "node": "Has Domain?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Domain?": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Get Token",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond: No Domain",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Snovio Results": {
+        "main": [
+          [
+            {
+              "node": "Has Account Updates?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Account Updates?": {
+        "main": [
+          [
+            {
+              "node": "Update Zoho Account",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Merge to Popup",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Update Zoho Account": {
+        "main": [
+          [
+            {
+              "node": "Merge to Popup",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge to Popup": {
+        "main": [
+          [
+            {
+              "node": "Build Popup HTML",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Popup HTML": {
+        "main": [
+          [
+            {
+              "node": "Respond: Popup",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Save Data?": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Get Token (Save)",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond: Save Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Prospects": {
+        "main": [
+          [
+            {
+              "node": "Loop Prospects",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Prospects": {
+        "main": [
+          [
+            {
+              "node": "Collect Results",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Snovio: Start Email Lookup",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Email Result": {
+        "main": [
+          [
+            {
+              "node": "Create Zoho Contact",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Zoho Contact": {
+        "main": [
+          [
+            {
+              "node": "Contact Created?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Contact Created?": {
+        "main": [
+          [
+            {
+              "node": "Is Verified?",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Contact Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Add Unverified Tag": {
+        "main": [
+          [
+            {
+              "node": "Log Contact Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Collect Results": {
+        "main": [
+          [
+            {
+              "node": "Respond: Save Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Start Search": {
+        "main": [
+          [
+            {
+              "node": "Wait 3s",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait 3s": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Get Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Results": {
+        "main": [
+          [
+            {
+              "node": "Parse Snovio Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Start Email Lookup": {
+        "main": [
+          [
+            {
+              "node": "Wait Email Lookup",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait Email Lookup": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Get Email Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Email Result": {
+        "main": [
+          [
+            {
+              "node": "Parse Email Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Verified?": {
+        "main": [
+          [
+            {
+              "node": "Add Verified Tag",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Add Unverified Tag",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Add Verified Tag": {
+        "main": [
+          [
+            {
+              "node": "Log Contact Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Token": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Get Balance",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Snovio: Get Lists",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Token (Save)": {
+        "main": [
+          [
+            {
+              "node": "Need to Create List?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Need to Create List?": {
+        "main": [
+          [
+            {
+              "node": "Create Snovio List",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Store List ID",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Snovio List": {
+        "main": [
+          [
+            {
+              "node": "Store List ID",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Store List ID": {
+        "main": [
+          [
+            {
+              "node": "Prepare Prospects",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Contact Result": {
+        "main": [
+          [
+            {
+              "node": "Has Snovio List?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Snovio List?": {
+        "main": [
+          [
+            {
+              "node": "Add to Snovio List",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Loop Prospects",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Add to Snovio List": {
+        "main": [
+          [
+            {
+              "node": "Loop Prospects",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Balance": {
+        "main": [
+          [
+            {
+              "node": "Merge Balance & Lists",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Snovio: Get Lists": {
+        "main": [
+          [
+            {
+              "node": "Merge Balance & Lists",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Balance & Lists": {
+        "main": [
+          [
+            {
+              "node": "Snovio: Start Search",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Mike Allen",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-01-12T07:45:26.549Z",
+        "id": 613,
+        "workflowId": "pvdUlL8oUiLlSvkD",
+        "versionId": "8283b1d1-093d-4c87-9dc8-7dd8c4d0fc17",
+        "event": "activated",
+        "userId": "4fe16f81-4e05-4ba3-a58c-2970e1ede8e2"
+      }
+    ]
+  }
+}
